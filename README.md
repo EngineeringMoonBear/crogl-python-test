@@ -1,11 +1,11 @@
 # GitHub Advisories Fetch & Catagorize
 
-This script uses GitHub's GraphQL API to download all reviewed security advisories related to Python packages (`pip` ecosystem), organize them by severity, and save them as CSV files.
+This script uses GitHub's GraphQL API to download all reviewed security advisories, organize them by severity, and save them as CSV files.
 
 ## 🔧 Features
 
 - Uses GitHub GraphQL API
-- Downloads all `pip` ecosystem advisories
+- Downloads all advisories
 - Organizes advisories into folders: `low`, `moderate`, `high`, `critical`
 - Outputs a `.csv` for each severity category
 - Compresses the output into a zip file
