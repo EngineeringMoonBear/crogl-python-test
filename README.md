@@ -20,3 +20,16 @@ pip install requests pandas
 
 What is Pandas?
 Pandas is a Python library for data manipulation and analysis. It's designed to make working with structured data fast, easy, and expressive.
+
+## Output Example
+
+advisories/
+├── critical/
+│   └── critical_advisories.csv
+├── high/
+│   └── high_advisories.csv
+├── moderate/
+│   └── moderate_advisories.csv
+├── low/
+│   └── low_advisories.csv
+└── advisories_by_severity.zip
