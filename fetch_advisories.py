@@ -1,17 +1,25 @@
+import os
 import requests
 import pandas as pd
-import os
 import zipfile
 from pathlib import Path
+from dotenv import load_dotenv
 
-#Github GraphQL API endpoint
+# Load environment variables from .env file
+load_dotenv()
+
+# Read GitHub token from environment
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+if not GITHUB_TOKEN:
+    raise ValueError("GITHUB_TOKEN not found in .env file or environment")
+
+# GitHub GraphQL API endpoint
 GITHUB_API_URL = "https://api.github.com/graphql"
-#GITHUB_TOKEN = ""
 
 # GraphQL query to fetch pip advisories
 QUERY = """
 query ($cursor: String) {
-  securityAdvisories(first: 100, after: $cursor, ecosystem: PIP, orderBy: {field: UPDATED_AT, direction: DESC}) {
+  securityAdvisories(first: 100, after: $cursor, orderBy: {field: UPDATED_AT, direction: DESC}) {
     pageInfo {
       endCursor
       hasNextPage
@@ -35,6 +43,7 @@ query ($cursor: String) {
         nodes {
           package {
             name
+            ecosystem
           }
           vulnerableVersionRange
         }
@@ -43,10 +52,12 @@ query ($cursor: String) {
   }
 }
 """
+
 HEADERS = {
     "Authorization": f"Bearer {GITHUB_TOKEN}",
     "Content-Type": "application/json"
 }
+
 
 def fetch_advisories():
     advisories = []
@@ -58,9 +69,26 @@ def fetch_advisories():
             json={"query": QUERY, "variables": {"cursor": cursor}},
             headers=HEADERS
         )
+
+        if response.status_code != 200:
+            raise Exception(f"GitHub API request failed: {response.status_code} - {response.text}")
+
         data = response.json()
+        if 'errors' in data:
+            raise Exception(f"GraphQL errors returned: {data['errors']}")
+
         advisories_batch = data['data']['securityAdvisories']['nodes']
-        advisories.extend(advisories_batch)
+
+        # Filter for only PIP ecosystem advisories
+        pip_advisories = [
+            a for a in advisories_batch
+            if a['vulnerabilities']['nodes'] and
+               a['vulnerabilities']['nodes'][0]['package']['ecosystem'] == "PIP"
+        ]
+
+        advisories.extend(pip_advisories)
+
+        print(f"Fetched {len(pip_advisories)} pip advisories... (total so far: {len(advisories)})")
 
         page_info = data['data']['securityAdvisories']['pageInfo']
         if page_info['hasNextPage']:
@@ -69,6 +97,8 @@ def fetch_advisories():
             break
 
     return advisories
+
+
 def organize_and_export(advisories):
     base_path = Path("advisories")
     base_path.mkdir(exist_ok=True)
@@ -83,9 +113,11 @@ def organize_and_export(advisories):
 
         rows = []
         for a in filtered:
-            cve_id = next((i["value"] for i in a["identifiers"] if i["type"] == "CVE"), "")
+            cve_id = next((i["value"] for i in a.get("identifiers", []) if i["type"] == "CVE"), "")
             pkg = a['vulnerabilities']['nodes'][0]['package']['name'] if a['vulnerabilities']['nodes'] else ""
             version_range = a['vulnerabilities']['nodes'][0]['vulnerableVersionRange'] if a['vulnerabilities']['nodes'] else ""
+            references = ", ".join(r['url'] for r in a.get('references', []))
+
             rows.append({
                 "GHSA ID": a['ghsaId'],
                 "CVE ID": cve_id,
@@ -96,7 +128,7 @@ def organize_and_export(advisories):
                 "Published At": a['publishedAt'],
                 "Updated At": a['updatedAt'],
                 "Withdrawn At": a['withdrawnAt'],
-                "References": ", ".join(r['url'] for r in a['references'])
+                "References": references
             })
 
         df = pd.DataFrame(rows)
@@ -106,7 +138,7 @@ def organize_and_export(advisories):
         df.to_csv(csv_path, index=False)
         csv_paths.append(csv_path)
 
-# Zip everything
+    # Zip everything
     zip_path = base_path / "advisories_by_severity.zip"
     with zipfile.ZipFile(zip_path, "w") as zipf:
         for path in csv_paths:
@@ -115,8 +147,17 @@ def organize_and_export(advisories):
 
 if __name__ == "__main__":
     print("Fetching advisories...")
-    advisories = fetch_advisories()
-    print(f"Fetched {len(advisories)} advisories.")
+    try:
+        advisories = fetch_advisories()
+        print(f"Fetched {len(advisories)} total advisories.")
+    except Exception as e:
+        print(f"Error fetching advisories: {e}")
+        exit(1)
+
     print("Organizing and exporting...")
-    organize_and_export(advisories)
-    print("Done. Files saved in 'advisories/' directory.")
+    try:
+        organize_and_export(advisories)
+        print("✅ Done. Files saved in 'advisories/' directory.")
+    except Exception as e:
+        print(f"Error writing files: {e}")
+        exit(1)

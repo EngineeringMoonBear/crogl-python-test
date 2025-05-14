@@ -33,3 +33,11 @@ advisories/
 ├── low/
 │   └── low_advisories.csv
 └── advisories_by_severity.zip
+
+## Project Structure
+advisory-fetcher/
+├── fetch_advisories.py
+├── .env              # Secret, ignored
+├── .env.example      # Placeholder for others
+├── .gitignore
+└── README.md
